@@ -105,10 +105,16 @@ async function updateAuthUI() {
         if (profile?.is_admin) navAdminBtn.style.display = 'flex';
     } else {
         authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
-        document.getElementById('login-trigger-btn').onclick = openModal;
         navAdminBtn.style.display = 'none';
     }
 }
+
+// Event Delegation for Login Button
+authContainer.addEventListener('click', (e) => {
+    if (e.target.id === 'login-trigger-btn') {
+        openModal();
+    }
+});
 
 // Logic: Register (ID/Password)
 document.getElementById('do-signup-btn').onclick = async () => {
