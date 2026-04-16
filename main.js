@@ -58,8 +58,6 @@ const splitBtn = document.getElementById('split-btn');
 const mainDownloadBtn = document.getElementById('main-download-btn');
 const downloadText = document.getElementById('download-text');
 const resetBtn = document.getElementById('reset-btn-v2');
-const mergedName = document.getElementById('merged-name');
-const mergedStats = document.getElementById('merged-stats');
 
 const splitTabBtns = document.querySelectorAll('.split-tab-btn');
 const splitRangeSection = document.getElementById('split-range-section');
@@ -75,6 +73,11 @@ let finalBlob = null;
 let currentMode = 'recommended';
 let ranges = [{ from: 1, to: 1 }];
 let totalPagesInCurrentSplit = 0;
+
+// --- Debug Helper ---
+function logDebug(msg, color = "#fff") {
+    console.log(`[DEBUG] ${msg}`);
+}
 
 // --- Auth Modal Control ---
 function openModal() { authModal.style.display = 'flex'; }
@@ -92,19 +95,22 @@ modalTabBtns.forEach(btn => {
     };
 });
 
-// --- Auth Handling (Robust Version) ---
+// --- Auth Handling ---
 async function updateAuthUI() {
     try {
+        logDebug("Updating Auth UI...");
         const { data: { user } } = await supabase.auth.getUser();
         currentUser = user;
         
         if (user) {
-            // Profile fetch wrapped in try to prevent crash if table missing
+            logDebug(`Logged in as: ${user.email}`);
             try {
-                const { data: profile } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
+                const { data: profile, error: pErr } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
+                if (pErr) throw pErr;
                 currentProfile = profile;
+                logDebug(`Profile loaded. Admin: ${profile?.is_admin}`);
             } catch (pErr) {
-                console.warn("User profile data not yet available.");
+                logDebug(`Profile load failed: ${pErr.message}`, "#f87171");
             }
 
             const userName = user.user_metadata?.full_name || user.email.split('@')[0];
@@ -114,21 +120,22 @@ async function updateAuthUI() {
             
             if (currentProfile?.is_admin) navAdminBtn.style.display = 'flex';
         } else {
+            logDebug("No user session found.");
             authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
             navAdminBtn.style.display = 'none';
         }
     } catch (err) {
-        console.error("Auth UI Update failed:", err);
+        logDebug(`Auth UI Update Error: ${err.message}`, "#f87171");
     }
 }
 
-// Event Delegation for Top Login Button
 authContainer.addEventListener('click', (e) => {
     if (e.target.id === 'login-trigger-btn') openModal();
 });
 
 // Logic: Register
-document.getElementById('do-signup-btn').onclick = async () => {
+document.getElementById('do-signup-btn').onclick = async (e) => {
+    const btn = e.currentTarget;
     const email = document.getElementById('signup-email').value;
     const name = document.getElementById('signup-name').value;
     const country = document.getElementById('signup-country').value;
@@ -136,34 +143,54 @@ document.getElementById('do-signup-btn').onclick = async () => {
     
     if (!email || !name || !country || !password) { alert('All fields required'); return; }
     
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+    
     const { data, error } = await supabase.auth.signUp({
         email, password, options: { data: { full_name: name, country: country } }
     });
     
-    if (error) alert(error.message);
-    else {
+    if (error) {
+        alert(`Signup Error: ${error.message}`);
+        btn.disabled = false;
+        btn.textContent = "Register Now";
+    } else {
         alert('Welcome! Your account has been created.');
         closeModal();
-        updateAuthUI();
+        await updateAuthUI();
     }
 };
 
 // Logic: Login
-document.getElementById('do-login-btn').onclick = async () => {
-    console.log("Login button clicked");
+document.getElementById('do-login-btn').onclick = async (e) => {
+    const btn = e.currentTarget;
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     
     if (!email || !password) { alert('Enter credentials'); return; }
     
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    
-    if (error) {
-        alert(error.message);
-    } else {
-        console.log("Login successful");
-        closeModal();
-        await updateAuthUI();
+    btn.disabled = true;
+    btn.textContent = "Verifying...";
+    logDebug(`Attempting login for: ${email}`);
+
+    try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        
+        if (error) {
+            logDebug(`Login Failed: ${error.message}`, "#f87171");
+            alert(`Login Failed: ${error.message}`);
+            btn.disabled = false;
+            btn.textContent = "Log In";
+        } else {
+            logDebug("Login Success!");
+            closeModal();
+            await updateAuthUI();
+        }
+    } catch (err) {
+        logDebug(`Critical Login Error: ${err.message}`, "#f87171");
+        alert("A critical error occurred. Check the console.");
+        btn.disabled = false;
+        btn.textContent = "Log In";
     }
 };
 
@@ -174,7 +201,7 @@ updateAuthUI();
 async function fetchAdminUsers() {
     adminUserList.innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>';
     const { data, error } = await supabase.from('pdf_user_profiles').select('*').order('created_at', { ascending: false });
-    if (error) return;
+    if (error) { logDebug(`Admin list error: ${error.message}`); return; }
     adminUserList.innerHTML = '';
     data?.forEach(user => {
         const tr = document.createElement('tr');
@@ -273,4 +300,4 @@ resetBtn.onclick = () => resetToUpload();
 function resetToUpload() { uploadSection.style.display='block'; statusArea.style.display='none'; resultDashboard.style.display='none'; fileInput.value=''; selectedFiles=[]; compressedResults=[]; finalBlob=null; ranges=[{from:1,to:1}]; renderFileList(); }
 const modeCards = document.querySelectorAll('.mode-card'); modeCards.forEach(c => c.onclick=() => { modeCards.forEach(x=>x.classList.remove('selected')); c.classList.add('selected'); currentMode=c.dataset.mode; });
 async function compressSinglePDF(f,u) { const p = await PDFDocument.load(await f.arrayBuffer(),{ignoreEncryption:true}); const ctx = p.context; const items = []; for(const[r,o] of ctx.enumerateIndirectObjects()){if(o instanceof PDFRawStream && o.dict.get(PDFName.of('Subtype'))===PDFName.of('Image')) items.push({r,o});} const q=currentMode==='extreme'?0.3:0.6; const s=currentMode==='extreme'?0.4:0.7; for(let i=0; i<items.length; i++){u(`Images ${i+1}/${items.length}`, 10+(i/items.length*80)); const res=await compressImageStream(items[i].o,q,s); if(res){const d=items[i].o.dict.clone(); d.set(PDFName.of('Width'),PDFNumber.of(res.width)); d.set(PDFName.of('Height'),PDFNumber.of(res.height)); d.set(PDFName.of('Filter'),PDFName.of('DCTDecode')); d.delete(PDFName.of('DecodeParms')); ctx.assign(items[i].r, PDFRawStream.of(d, res.bytes));}} return new Blob([await p.save()], {type:'application/pdf'}); }
-async function compressImageStream(s,q,sc) { const w=s.dict.get(PDFName.of('Width'))?.numberValue; if(!w||w<10) return null; return new Promise(res => { const img=new Image(); img.onload=()=>{const c=document.createElement('canvas'); const nw=Math.floor(w*sc),nh=Math.floor(s.dict.get(PDFName.of('Height')).numberValue*sc); c.width=nw; c.height=nh; c.getContext('2d').drawImage(img,0,0,nw,nh); c.toBlob(b=>b.arrayBuffer().then(buf=>res({bytes:new Uint8Array(buf),width:nw,height:nh})),'image/jpeg',q);}; img.src=URL.createObjectURL(new Blob([s.contents])); }); }
+async function compressImageStream(s,q,sc) { const w=s.dict.get(PDFName.of('Width'))?.numberValue; if(!w||w<10) return null; return new Promise(res => { const img=new Image(); img.onload=()=>{const c=document.createElement('canvas'); const nw=Math.floor(w*sc),nh=Math.floor(s.dict.get(PDFName.of('Height')).numberValue*sc); c.width=nw; h=nh; c.getContext('2d').drawImage(img,0,0,nw,nh); c.toBlob(b=>b.arrayBuffer().then(buf=>res({bytes:new Uint8Array(buf),width:nw,height:nh})),'image/jpeg',q);}; img.src=URL.createObjectURL(new Blob([s.contents])); }); }
