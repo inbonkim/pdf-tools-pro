@@ -258,6 +258,30 @@ function getUserLevel() { if (!currentUser) return 'GUEST'; return currentProfil
 function formatBytes(b,d=2){if(b===0) return '0 Bytes'; const k=1024,i=Math.floor(Math.log(b)/Math.log(k)); return parseFloat((b/Math.pow(k,i)).toFixed(d))+' '+['B','KB','MB','GB','TB'][i];}
 
 dropZone.onclick = (e) => { if (e.target.id !== 'file-input') { fileInput.value = ''; fileInput.click(); } };
+
+// Drag & Drop Listeners
+dropZone.ondragover = (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+};
+
+dropZone.ondragleave = () => {
+    dropZone.classList.remove('drag-over');
+};
+
+dropZone.ondrop = (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) {
+        handleFiles(e.dataTransfer.files);
+    }
+};
+
+fileInput.onchange = (e) => {
+    if (e.target.files.length > 0) {
+        handleFiles(e.target.files);
+    }
+};
 async function handleFiles(files) {
     const level = getUserLevel(); const currentLimit = PDF_PRO_CONFIG.LIMITS[level];
     const newFiles = Array.from(files).filter(f => f.type === 'application/pdf');
