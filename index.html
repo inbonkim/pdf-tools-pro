@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Tools Pro - Comprehensive PDF Utility by DREAMON</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="icon" type="image/png" href="./dreamon_logo_1776311537173.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+</head>
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <!-- Top Branding Bar -->
+    <div class="top-bar">
+        <span>PDF Tools</span>
+    </div>
+
+    <div class="container">
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="nav-btn active" data-tab="compress"><i data-lucide="shrink"></i> Compress</button>
+            <button class="nav-btn" data-tab="merge"><i data-lucide="layers"></i> Merge</button>
+            <button class="nav-btn" data-tab="split"><i data-lucide="scissors"></i> Split</button>
+        </nav>
+
+        <header>
+            <h1 id="main-title">PDF Shrink</h1>
+            <p class="subtitle" id="main-subtitle">Secure & Efficient Batch PDF Compression</p>
+        </header>
+
+        <main class="card">
+            <div id="upload-section">
+                <div class="drop-zone" id="drop-zone">
+                    <div class="drop-zone-icon"><i data-lucide="files" id="drop-icon"></i></div>
+                    <div class="drop-zone-text" id="drop-text">Drag & drop up to 10 PDF files here</div>
+                    <div class="drop-zone-limit">Processed safely in your browser (Local Only)</div>
+                    <input type="file" id="file-input" accept="application/pdf" multiple>
+                </div>
+            </div>
+
+            <div class="status-area" id="status-area" style="display: none;">
+                <div id="merge-hint" style="display: none; background: rgba(99, 102, 241, 0.1); padding: 0.75rem; border-radius: 12px; margin-bottom: 1rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; color: #a5b4fc;">
+                    <i data-lucide="info" size="18"></i> Drag items to change the merging order.
+                </div>
+
+                <div id="file-list" style="margin-bottom: 2rem;"></div>
+
+                <!-- Mode Selection: Compress -->
+                <div id="mode-selection">
+                    <div class="modes-grid" style="display: grid;">
+                        <div class="mode-card" data-mode="extreme"><div class="mode-icon"><i data-lucide="zap"></i></div><span class="mode-title">Extreme</span></div>
+                        <div class="mode-card selected" data-mode="recommended"><div class="mode-icon"><i data-lucide="check-circle-2"></i></div><span class="mode-title">Recommended</span></div>
+                        <div class="mode-card" data-mode="low"><div class="mode-icon"><i data-lucide="image"></i></div><span class="mode-title">Minimum</span></div>
+                    </div>
+                    <button class="action-btn" id="compress-btn" style="margin-top: 2rem;"><i data-lucide="shrink"></i><span>Start Batch Compression</span></button>
+                    <button class="action-btn btn-secondary" id="add-more-btn"><i data-lucide="plus-circle"></i><span>Add More Files</span></button>
+                </div>
+
+                <!-- Mode Selection: Merge -->
+                <div id="merge-action" style="display: none;">
+                    <button class="action-btn" id="merge-btn"><i data-lucide="combine"></i><span>Start PDF Merge</span></button>
+                    <button class="action-btn btn-secondary" id="add-more-merge-btn"><i data-lucide="plus-circle"></i><span>Add More Files</span></button>
+                </div>
+
+                <!-- Mode Selection: Split -->
+                <div id="split-action" style="display: none;">
+                    <div class="split-options-card">
+                        <div class="split-tab-switcher">
+                            <button class="split-tab-btn active" data-split-type="range"><i data-lucide="move-horizontal"></i> Range</button>
+                            <button class="split-tab-btn" data-split-type="pages"><i data-lucide="layout-grid"></i> Pages</button>
+                        </div>
+                        <div id="split-range-section">
+                            <div id="range-list-container"></div>
+                            <button class="btn-text-action" id="add-range-btn"><i data-lucide="plus"></i> Add Range</button>
+                        </div>
+                        <div id="split-pages-section" style="display: none; padding: 1rem; text-align: center;">
+                            <i data-lucide="copy" size="48" style="color: var(--primary); margin-bottom: 1rem; opacity: 0.5;"></i>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Each page will be split into<br>an individual PDF file.</p>
+                        </div>
+                    </div>
+                    <button class="action-btn" id="split-btn"><i data-lucide="scissors"></i><span>Start PDF Split</span></button>
+                </div>
+
+                <!-- Processing Overlay -->
+                <div class="processing-overlay" id="processing-overlay">
+                    <div class="spinner"></div>
+                    <p class="processing-text" id="batch-progress-text">Processing...</p>
+                    <p class="processing-subtext" id="processing-status">Waiting...</p>
+                    <div class="progress-container" style="width: 100%; max-width: 300px; margin-top: 1.5rem;"><div class="progress-bar" id="progress-bar"></div></div>
+                </div>
+
+                <!-- Result Dashboard -->
+                <div class="result-dashboard" id="result-dashboard">
+                    <div style="text-align: center;">
+                        <div class="success-badge" id="result-badge">Task Completed!</div>
+                        <h2 style="margin-bottom: 2rem;" id="result-title">Files are ready</h2>
+                    </div>
+                    <div id="result-list" style="margin-bottom: 2rem;"></div>
+                    <div id="single-result" style="display: none; margin-bottom: 2rem;">
+                         <div class="result-list-item">
+                            <div class="result-list-icon"><i data-lucide="check"></i></div>
+                            <div class="result-list-info"><span class="result-list-name" id="merged-name">document.pdf</span><span class="result-list-stats" id="merged-stats">0 MB</span></div>
+                        </div>
+                    </div>
+                    <button class="action-btn" id="main-download-btn"><i data-lucide="download"></i><span id="download-text">Download</span></button>
+                    <button class="action-btn btn-secondary" id="reset-btn-v2"><i data-lucide="rotate-ccw"></i><span id="reset-text">Start New Project</span></button>
+                </div>
+            </div>
+        </main>
+
+        <footer style="text-align: center; margin-top: 3rem; padding: 2rem; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid var(--glass-border);">
+            <p>© 2026 <strong>DREAMON</strong>. All rights reserved.</p>
+            <p style="margin-top: 0.5rem; opacity: 0.7;">Professional PDF Solutions for Global Users</p>
+        </footer>
+    </div>
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
