@@ -92,65 +92,79 @@ modalTabBtns.forEach(btn => {
     };
 });
 
-// --- Auth Handling ---
+// --- Auth Handling (Robust Version) ---
 async function updateAuthUI() {
-    const { data: { user } } = await supabase.auth.getUser();
-    currentUser = user;
-    if (user) {
-        const { data: profile } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
-        currentProfile = profile;
-        const userName = user.user_metadata?.full_name || user.email.split('@')[0];
-        authContainer.innerHTML = `<div class="user-profile"><span class="user-email">${userName}</span><span class="logout-link" id="logout-btn">Logout</span></div>`;
-        document.getElementById('logout-btn').onclick = async () => { await supabase.auth.signOut(); window.location.reload(); };
-        if (profile?.is_admin) navAdminBtn.style.display = 'flex';
-    } else {
-        authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
-        navAdminBtn.style.display = 'none';
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        currentUser = user;
+        
+        if (user) {
+            // Profile fetch wrapped in try to prevent crash if table missing
+            try {
+                const { data: profile } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
+                currentProfile = profile;
+            } catch (pErr) {
+                console.warn("User profile data not yet available.");
+            }
+
+            const userName = user.user_metadata?.full_name || user.email.split('@')[0];
+            authContainer.innerHTML = `<div class="user-profile"><span class="user-email">${userName}</span><span class="logout-link" id="logout-btn">Logout</span></div>`;
+            const logOutBtn = document.getElementById('logout-btn');
+            if (logOutBtn) logOutBtn.onclick = async () => { await supabase.auth.signOut(); window.location.reload(); };
+            
+            if (currentProfile?.is_admin) navAdminBtn.style.display = 'flex';
+        } else {
+            authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
+            navAdminBtn.style.display = 'none';
+        }
+    } catch (err) {
+        console.error("Auth UI Update failed:", err);
     }
 }
 
-// Event Delegation for Login Button
+// Event Delegation for Top Login Button
 authContainer.addEventListener('click', (e) => {
-    if (e.target.id === 'login-trigger-btn') {
-        openModal();
-    }
+    if (e.target.id === 'login-trigger-btn') openModal();
 });
 
-// Logic: Register (ID/Password)
+// Logic: Register
 document.getElementById('do-signup-btn').onclick = async () => {
     const email = document.getElementById('signup-email').value;
     const name = document.getElementById('signup-name').value;
     const country = document.getElementById('signup-country').value;
     const password = document.getElementById('signup-password').value;
     
-    if (!email || !name || !country || !password) { alert('All fields are required.'); return; }
-    if (password.length < 6) { alert('Password must be at least 6 characters.'); return; }
+    if (!email || !name || !country || !password) { alert('All fields required'); return; }
     
     const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: name, country: country } }
+        email, password, options: { data: { full_name: name, country: country } }
     });
     
     if (error) alert(error.message);
     else {
-        alert('Welcome! Your account has been created successfully.');
+        alert('Welcome! Your account has been created.');
         closeModal();
-        updateAuthUI(); // Refresh UI to show logged in state
+        updateAuthUI();
     }
 };
 
-// Logic: Login (ID/Password)
+// Logic: Login
 document.getElementById('do-login-btn').onclick = async () => {
+    console.log("Login button clicked");
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     
-    if (!email || !password) { alert('Enter email and password.'); return; }
+    if (!email || !password) { alert('Enter credentials'); return; }
     
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     
-    if (error) alert(error.message);
-    else { closeModal(); updateAuthUI(); }
+    if (error) {
+        alert(error.message);
+    } else {
+        console.log("Login successful");
+        closeModal();
+        await updateAuthUI();
+    }
 };
 
 supabase.auth.onAuthStateChange(() => updateAuthUI());
@@ -162,7 +176,7 @@ async function fetchAdminUsers() {
     const { data, error } = await supabase.from('pdf_user_profiles').select('*').order('created_at', { ascending: false });
     if (error) return;
     adminUserList.innerHTML = '';
-    data.forEach(user => {
+    data?.forEach(user => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${user.email}</td><td><span class="badge-level level-${user.level}">${user.level}</span></td><td>${user.country || '-'}</td><td><select class="level-selector" data-id="${user.id}"><option value="MEMBER" ${user.level==='MEMBER'?'selected':''}>Member</option><option value="VERIFIED" ${user.level==='VERIFIED'?'selected':''}>Verified</option></select></td>`;
         tr.querySelector('.level-selector').onchange = async (e) => {
@@ -176,7 +190,7 @@ refreshUsersBtn.onclick = fetchAdminUsers;
 
 navBtns.forEach(btn => {
     btn.onclick = () => {
-        if (selectedFiles.length > 0 && !confirm('All progress will be lost. Continue?')) return;
+        if (selectedFiles.length > 0 && !confirm('Discard changes?')) return;
         navBtns.forEach(b => b.classList.remove('active')); btn.classList.add('active');
         activeTab = btn.dataset.tab; updateUIForTab(); resetToUpload();
         if (activeTab === 'admin') fetchAdminUsers();
@@ -202,7 +216,7 @@ async function handleFiles(files) {
     if (activeTab === 'split' && (selectedFiles.length + newFiles.length > 1)) return;
     for (const file of newFiles) {
         if (selectedFiles.length >= 10) break;
-        if (file.size > currentLimit) { alert(`Exceeds ${formatBytes(currentLimit)} for ${level}`); continue; }
+        if (file.size > currentLimit) { alert(`Exceeds limit for ${level}`); continue; }
         selectedFiles.push({ file, id: Math.random().toString(36).substr(2, 9) });
     }
     if (selectedFiles.length > 0) {
@@ -248,6 +262,7 @@ function initSortable() { Sortable.create(fileListContainer, { animation: 150, h
 compressBtn.onclick = async () => { processingOverlay.style.display = 'flex'; modeSelection.style.display = 'none'; compressedResults = []; for (let b = 0; b < selectedFiles.length; b++) { const blob = await compressSinglePDF(selectedFiles[b].file, (msg, prog) => { processingStatus.textContent = msg; progressBar.style.width = `${prog}%`; }); compressedResults.push({ blob, name: selectedFiles[b].file.name.replace(/\.[^/.]+$/, "")+"_S.pdf" }); } showBatchResults(); };
 mergeBtn.onclick = async () => { mergeAction.style.display='none'; processingOverlay.style.display='flex'; try { const m = await PDFDocument.create(); for (let i=0; i<selectedFiles.length; i++) { const p = await PDFDocument.load(await selectedFiles[i].file.arrayBuffer(),{ignoreEncryption:true}); const pg = await m.copyPages(p, p.getPageIndices()); pg.forEach(x => m.addPage(x)); } finalBlob = new Blob([await m.save()], {type:'application/pdf'}); showSingleResult('MERGE COMPLETED!', 'Ready', 'merged.pdf'); } catch(e) {alert('Error'); resetToUpload(); } };
 splitBtn.onclick = async () => { splitAction.style.display='none'; processingOverlay.style.display='flex'; try { const pDoc = await PDFDocument.load(await selectedFiles[0].file.arrayBuffer(), {ignoreEncryption:true}); const tot = pDoc.getPageCount(); const res = []; if (splitType==='pages') { for(let i=0; i<tot; i++) { const d = await PDFDocument.create(); const [pg] = await d.copyPages(pDoc, [i]); d.addPage(pg); res.push({blob: new Blob([await d.save()], {type:'application/pdf'}), name:`page_${i+1}.pdf`}); } } else { for(let i=0; i<ranges.length; i++) { const r = ranges[i]; const ids = []; for(let p=r.from-1; p<r.to; p++) if(p<tot) ids.push(p); if(ids.length===0) continue; const d = await PDFDocument.create(); const pgs = await d.copyPages(pDoc, ids); pgs.forEach(x => d.addPage(x)); res.push({blob: new Blob([await d.save()], {type:'application/pdf'}), name:`range_${i+1}.pdf`}); } } if(res.length===1) { finalBlob=res[0].blob; showSingleResult('SPLIT!','Ready',res[0].name); } else { const z = new JSZip(); res.forEach(x => z.file(x.name, x.blob)); finalBlob=await z.generateAsync({type:'blob'}); showSingleResult('SPLIT!','ZIP Ready','split.zip'); } } catch(e) {alert('Error'); resetToUpload();} };
+
 function showBatchResults() { processingOverlay.style.display='none'; resultDashboard.style.display='block'; fileListContainer.style.display='none'; resultListContainer.style.display='block'; singleResult.style.display='none'; if(compressedResults.length===1) { finalBlob=compressedResults[0].blob; showSingleResult('DONE','Ready',compressedResults[0].name); return; } resultListContainer.innerHTML = ''; compressedResults.forEach(i => resultListContainer.appendChild(createResultCard(i.name, formatBytes(i.blob.size), i.blob))); lucide.createIcons(); }
 function showSingleResult(b,t,n) { processingOverlay.style.display='none'; resultDashboard.style.display='block'; fileListContainer.style.display='none'; resultListContainer.style.display='none'; singleResult.style.display='block'; resultBadge.textContent=b; resultTitle.textContent=t; mergedName.textContent=n; mergedStats.textContent=formatBytes(finalBlob.size); downloadText.textContent=n.endsWith('.zip')?'Download ZIP':'Download PDF'; lucide.createIcons(); }
 function createResultCard(n,s,b) { const c = document.createElement('div'); c.className='result-list-item'; c.innerHTML=`<div class="result-list-icon"><i data-lucide="check"></i></div><div class="result-list-info"><div>${n}</div><div>${s}</div></div><button class="individual-download-btn"><i data-lucide="download"></i></button>`; c.querySelector('button').onclick=()=>downloadFile(b,n); return c; }
