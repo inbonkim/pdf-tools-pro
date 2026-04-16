@@ -65,6 +65,9 @@ const splitPagesSection = document.getElementById('split-pages-section');
 const rangeListContainer = document.getElementById('range-list-container');
 const addRangeBtn = document.getElementById('add-range-btn');
 
+const debugOverlay = document.getElementById('debug-log-overlay');
+const debugContent = document.getElementById('debug-log-content');
+
 let activeTab = 'compress'; 
 let splitType = 'range'; 
 let selectedFiles = []; 
@@ -75,8 +78,16 @@ let ranges = [{ from: 1, to: 1 }];
 let totalPagesInCurrentSplit = 0;
 
 // --- Debug Helper ---
-function logDebug(msg, color = "#fff") {
+function logDebug(msg, color = "#00ff00") {
     console.log(`[DEBUG] ${msg}`);
+    if (debugOverlay && debugContent) {
+        debugOverlay.style.display = 'block';
+        const logLine = document.createElement('div');
+        logLine.style.color = color;
+        logLine.textContent = `> ${msg}`;
+        debugContent.appendChild(logLine);
+        debugOverlay.scrollTop = debugOverlay.scrollHeight;
+    }
 }
 
 // --- Auth Modal Control ---
@@ -98,20 +109,20 @@ modalTabBtns.forEach(btn => {
 // --- Auth Handling ---
 async function updateAuthUI() {
     try {
-        logDebug("Updating Auth UI...");
-        const { data: { user } } = await supabase.auth.getUser();
+        logDebug("Syncing Session...");
+        const { data: { user }, error: uErr } = await supabase.auth.getUser();
+        if (uErr) throw uErr;
         currentUser = user;
         
         if (user) {
-            logDebug(`Logged in as: ${user.email}`);
+            logDebug(`Session OK: ${user.email}`);
             try {
                 const { data: profile, error: pErr } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
-                if (pErr) throw pErr;
-                currentProfile = profile;
-                logDebug(`Profile loaded. Admin: ${profile?.is_admin}`);
-            } catch (pErr) {
-                logDebug(`Profile load failed: ${pErr.message}`, "#f87171");
-            }
+                if (!pErr) {
+                    currentProfile = profile;
+                    logDebug(`Profile: ${profile?.level} (Admin: ${profile?.is_admin})`);
+                }
+            } catch (pErr) {}
 
             const userName = user.user_metadata?.full_name || user.email.split('@')[0];
             authContainer.innerHTML = `<div class="user-profile"><span class="user-email">${userName}</span><span class="logout-link" id="logout-btn">Logout</span></div>`;
@@ -120,12 +131,12 @@ async function updateAuthUI() {
             
             if (currentProfile?.is_admin) navAdminBtn.style.display = 'flex';
         } else {
-            logDebug("No user session found.");
+            logDebug("Guest Session.");
             authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
             navAdminBtn.style.display = 'none';
         }
     } catch (err) {
-        logDebug(`Auth UI Update Error: ${err.message}`, "#f87171");
+        logDebug(`Auth Error: ${err.message}`, "#f87171");
     }
 }
 
@@ -140,57 +151,59 @@ document.getElementById('do-signup-btn').onclick = async (e) => {
     const name = document.getElementById('signup-name').value;
     const country = document.getElementById('signup-country').value;
     const password = document.getElementById('signup-password').value;
-    
-    if (!email || !name || !country || !password) { alert('All fields required'); return; }
+    if (!email || !name || !country || !password) return;
     
     btn.disabled = true;
-    btn.textContent = "Processing...";
-    
+    btn.textContent = "Working...";
+    logDebug(`Signing up: ${email}`);
+
     const { data, error } = await supabase.auth.signUp({
         email, password, options: { data: { full_name: name, country: country } }
     });
     
     if (error) {
-        alert(`Signup Error: ${error.message}`);
-        btn.disabled = false;
-        btn.textContent = "Register Now";
+        logDebug(`Signup Fail: ${error.message}`, "#f87171");
+        alert(error.message);
+        btn.disabled = false; btn.textContent = "Register Now";
     } else {
-        alert('Welcome! Your account has been created.');
-        closeModal();
-        await updateAuthUI();
+        logDebug("Signup Success!");
+        alert('Welcome!'); closeModal(); await updateAuthUI();
     }
 };
 
-// Logic: Login
+// Logic: Login with Timeout
 document.getElementById('do-login-btn').onclick = async (e) => {
     const btn = e.currentTarget;
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
-    
-    if (!email || !password) { alert('Enter credentials'); return; }
+    if (!email || !password) return;
     
     btn.disabled = true;
     btn.textContent = "Verifying...";
-    logDebug(`Attempting login for: ${email}`);
+    logDebug(`Checking: ${email}`);
 
+    // Set a race between login and a 12s timeout
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Request Timeout")), 12000));
+    
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await Promise.race([
+            supabase.auth.signInWithPassword({ email, password }),
+            timeoutPromise
+        ]);
         
         if (error) {
-            logDebug(`Login Failed: ${error.message}`, "#f87171");
-            alert(`Login Failed: ${error.message}`);
-            btn.disabled = false;
-            btn.textContent = "Log In";
+            logDebug(`Invalid: ${error.message}`, "#f87171");
+            alert(error.message);
+            btn.disabled = false; btn.textContent = "Log In";
         } else {
-            logDebug("Login Success!");
+            logDebug("Login OK!");
             closeModal();
             await updateAuthUI();
         }
     } catch (err) {
-        logDebug(`Critical Login Error: ${err.message}`, "#f87171");
-        alert("A critical error occurred. Check the console.");
-        btn.disabled = false;
-        btn.textContent = "Log In";
+        logDebug(`Error: ${err.message}`, "#f87171");
+        alert(err.message === "Request Timeout" ? "Server took too long to respond. Try again." : err.message);
+        btn.disabled = false; btn.textContent = "Log In";
     }
 };
 
@@ -201,7 +214,7 @@ updateAuthUI();
 async function fetchAdminUsers() {
     adminUserList.innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>';
     const { data, error } = await supabase.from('pdf_user_profiles').select('*').order('created_at', { ascending: false });
-    if (error) { logDebug(`Admin list error: ${error.message}`); return; }
+    if (error) return;
     adminUserList.innerHTML = '';
     data?.forEach(user => {
         const tr = document.createElement('tr');
@@ -217,7 +230,7 @@ refreshUsersBtn.onclick = fetchAdminUsers;
 
 navBtns.forEach(btn => {
     btn.onclick = () => {
-        if (selectedFiles.length > 0 && !confirm('Discard changes?')) return;
+        if (selectedFiles.length > 0 && !confirm('Discard?')) return;
         navBtns.forEach(b => b.classList.remove('active')); btn.classList.add('active');
         activeTab = btn.dataset.tab; updateUIForTab(); resetToUpload();
         if (activeTab === 'admin') fetchAdminUsers();
@@ -243,7 +256,7 @@ async function handleFiles(files) {
     if (activeTab === 'split' && (selectedFiles.length + newFiles.length > 1)) return;
     for (const file of newFiles) {
         if (selectedFiles.length >= 10) break;
-        if (file.size > currentLimit) { alert(`Exceeds limit for ${level}`); continue; }
+        if (file.size > currentLimit) { alert(`Exceeds limit`); continue; }
         selectedFiles.push({ file, id: Math.random().toString(36).substr(2, 9) });
     }
     if (selectedFiles.length > 0) {
@@ -289,7 +302,6 @@ function initSortable() { Sortable.create(fileListContainer, { animation: 150, h
 compressBtn.onclick = async () => { processingOverlay.style.display = 'flex'; modeSelection.style.display = 'none'; compressedResults = []; for (let b = 0; b < selectedFiles.length; b++) { const blob = await compressSinglePDF(selectedFiles[b].file, (msg, prog) => { processingStatus.textContent = msg; progressBar.style.width = `${prog}%`; }); compressedResults.push({ blob, name: selectedFiles[b].file.name.replace(/\.[^/.]+$/, "")+"_S.pdf" }); } showBatchResults(); };
 mergeBtn.onclick = async () => { mergeAction.style.display='none'; processingOverlay.style.display='flex'; try { const m = await PDFDocument.create(); for (let i=0; i<selectedFiles.length; i++) { const p = await PDFDocument.load(await selectedFiles[i].file.arrayBuffer(),{ignoreEncryption:true}); const pg = await m.copyPages(p, p.getPageIndices()); pg.forEach(x => m.addPage(x)); } finalBlob = new Blob([await m.save()], {type:'application/pdf'}); showSingleResult('MERGE COMPLETED!', 'Ready', 'merged.pdf'); } catch(e) {alert('Error'); resetToUpload(); } };
 splitBtn.onclick = async () => { splitAction.style.display='none'; processingOverlay.style.display='flex'; try { const pDoc = await PDFDocument.load(await selectedFiles[0].file.arrayBuffer(), {ignoreEncryption:true}); const tot = pDoc.getPageCount(); const res = []; if (splitType==='pages') { for(let i=0; i<tot; i++) { const d = await PDFDocument.create(); const [pg] = await d.copyPages(pDoc, [i]); d.addPage(pg); res.push({blob: new Blob([await d.save()], {type:'application/pdf'}), name:`page_${i+1}.pdf`}); } } else { for(let i=0; i<ranges.length; i++) { const r = ranges[i]; const ids = []; for(let p=r.from-1; p<r.to; p++) if(p<tot) ids.push(p); if(ids.length===0) continue; const d = await PDFDocument.create(); const pgs = await d.copyPages(pDoc, ids); pgs.forEach(x => d.addPage(x)); res.push({blob: new Blob([await d.save()], {type:'application/pdf'}), name:`range_${i+1}.pdf`}); } } if(res.length===1) { finalBlob=res[0].blob; showSingleResult('SPLIT!','Ready',res[0].name); } else { const z = new JSZip(); res.forEach(x => z.file(x.name, x.blob)); finalBlob=await z.generateAsync({type:'blob'}); showSingleResult('SPLIT!','ZIP Ready','split.zip'); } } catch(e) {alert('Error'); resetToUpload();} };
-
 function showBatchResults() { processingOverlay.style.display='none'; resultDashboard.style.display='block'; fileListContainer.style.display='none'; resultListContainer.style.display='block'; singleResult.style.display='none'; if(compressedResults.length===1) { finalBlob=compressedResults[0].blob; showSingleResult('DONE','Ready',compressedResults[0].name); return; } resultListContainer.innerHTML = ''; compressedResults.forEach(i => resultListContainer.appendChild(createResultCard(i.name, formatBytes(i.blob.size), i.blob))); lucide.createIcons(); }
 function showSingleResult(b,t,n) { processingOverlay.style.display='none'; resultDashboard.style.display='block'; fileListContainer.style.display='none'; resultListContainer.style.display='none'; singleResult.style.display='block'; resultBadge.textContent=b; resultTitle.textContent=t; mergedName.textContent=n; mergedStats.textContent=formatBytes(finalBlob.size); downloadText.textContent=n.endsWith('.zip')?'Download ZIP':'Download PDF'; lucide.createIcons(); }
 function createResultCard(n,s,b) { const c = document.createElement('div'); c.className='result-list-item'; c.innerHTML=`<div class="result-list-icon"><i data-lucide="check"></i></div><div class="result-list-info"><div>${n}</div><div>${s}</div></div><button class="individual-download-btn"><i data-lucide="download"></i></button>`; c.querySelector('button').onclick=()=>downloadFile(b,n); return c; }
@@ -300,4 +312,4 @@ resetBtn.onclick = () => resetToUpload();
 function resetToUpload() { uploadSection.style.display='block'; statusArea.style.display='none'; resultDashboard.style.display='none'; fileInput.value=''; selectedFiles=[]; compressedResults=[]; finalBlob=null; ranges=[{from:1,to:1}]; renderFileList(); }
 const modeCards = document.querySelectorAll('.mode-card'); modeCards.forEach(c => c.onclick=() => { modeCards.forEach(x=>x.classList.remove('selected')); c.classList.add('selected'); currentMode=c.dataset.mode; });
 async function compressSinglePDF(f,u) { const p = await PDFDocument.load(await f.arrayBuffer(),{ignoreEncryption:true}); const ctx = p.context; const items = []; for(const[r,o] of ctx.enumerateIndirectObjects()){if(o instanceof PDFRawStream && o.dict.get(PDFName.of('Subtype'))===PDFName.of('Image')) items.push({r,o});} const q=currentMode==='extreme'?0.3:0.6; const s=currentMode==='extreme'?0.4:0.7; for(let i=0; i<items.length; i++){u(`Images ${i+1}/${items.length}`, 10+(i/items.length*80)); const res=await compressImageStream(items[i].o,q,s); if(res){const d=items[i].o.dict.clone(); d.set(PDFName.of('Width'),PDFNumber.of(res.width)); d.set(PDFName.of('Height'),PDFNumber.of(res.height)); d.set(PDFName.of('Filter'),PDFName.of('DCTDecode')); d.delete(PDFName.of('DecodeParms')); ctx.assign(items[i].r, PDFRawStream.of(d, res.bytes));}} return new Blob([await p.save()], {type:'application/pdf'}); }
-async function compressImageStream(s,q,sc) { const w=s.dict.get(PDFName.of('Width'))?.numberValue; if(!w||w<10) return null; return new Promise(res => { const img=new Image(); img.onload=()=>{const c=document.createElement('canvas'); const nw=Math.floor(w*sc),nh=Math.floor(s.dict.get(PDFName.of('Height')).numberValue*sc); c.width=nw; h=nh; c.getContext('2d').drawImage(img,0,0,nw,nh); c.toBlob(b=>b.arrayBuffer().then(buf=>res({bytes:new Uint8Array(buf),width:nw,height:nh})),'image/jpeg',q);}; img.src=URL.createObjectURL(new Blob([s.contents])); }); }
+async function compressImageStream(s,q,sc) { const w=s.dict.get(PDFName.of('Width'))?.numberValue; if(!w||w<10) return null; return new Promise(res => { const img=new Image(); img.onload=()=>{const c=document.createElement('canvas'); const nw=Math.floor(w*sc),nh=Math.floor(s.dict.get(PDFName.of('Height')).numberValue*sc); c.width=nw; c.height=nh; c.getContext('2d').drawImage(img,0,0,nw,nh); c.toBlob(b=>b.arrayBuffer().then(buf=>res({bytes:new Uint8Array(buf),width:nw,height:nh})),'image/jpeg',q);}; img.src=URL.createObjectURL(new Blob([s.contents])); }); }

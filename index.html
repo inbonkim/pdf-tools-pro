@@ -28,6 +28,12 @@
         </div>
     </div>
 
+    <!-- On-Screen Debugger for troubleshooting -->
+    <div id="debug-log-overlay" style="position: fixed; bottom: 10px; right: 10px; background: rgba(0,0,0,0.9); color: #00ff00; font-family: monospace; font-size: 10px; padding: 10px; border-radius: 8px; z-index: 9999; max-width: 300px; max-height: 150px; overflow-y: auto; pointer-events: none; border: 1px solid #333; display: none;">
+        <div style="font-weight: bold; border-bottom: 1px solid #333; margin-bottom: 5px;">SYSTEM LOGS</div>
+        <div id="debug-log-content"></div>
+    </div>
+
     <div class="container">
         <!-- Navigation Tabs -->
         <nav class="nav-tabs">
