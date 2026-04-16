@@ -127,7 +127,11 @@ document.getElementById('do-signup-btn').onclick = async () => {
     });
     
     if (error) alert(error.message);
-    else { alert('Sign up successful! Please check your email for a verification link.'); closeModal(); }
+    else {
+        alert('Welcome! Your account has been created successfully.');
+        closeModal();
+        updateAuthUI(); // Refresh UI to show logged in state
+    }
 };
 
 // Logic: Login (ID/Password)
