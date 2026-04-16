@@ -261,5 +261,55 @@ header h1 { font-size: 2.2rem; font-weight: 900; margin-bottom: 0.5rem; color: #
   color: #a5b4fc;
 }
 
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* Admin Dashboard Styling */
+.admin-table-container {
+  overflow-x: auto;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.admin-table th {
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--primary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 800;
+  border-bottom: 2px solid var(--glass-border);
+}
+
+.admin-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.85rem;
+  color: #fff;
+}
+
+.admin-table tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+.level-selector {
+  background: #0f172a;
+  color: white;
+  border: 1px solid #334155;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.badge-level {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+.level-GUEST { background: #475569; }
+.level-MEMBER { background: #0369a1; }
+.level-VERIFIED { background: #059669; }
 

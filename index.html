@@ -34,6 +34,7 @@
             <button class="nav-btn active" data-tab="compress"><i data-lucide="shrink"></i> Compress</button>
             <button class="nav-btn" data-tab="merge"><i data-lucide="layers"></i> Merge</button>
             <button class="nav-btn" data-tab="split"><i data-lucide="scissors"></i> Split</button>
+            <button class="nav-btn" id="nav-admin-btn" data-tab="admin" style="display: none; color: #fbbf24 !important;"><i data-lucide="shield-check"></i> Admin</button>
         </nav>
 
         <header>
@@ -92,6 +93,31 @@
                         </div>
                     </div>
                     <button class="action-btn" id="split-btn"><i data-lucide="scissors"></i><span>Start PDF Split</span></button>
+                </div>
+
+                <!-- Mode Selection: Admin Dashboard -->
+                <div id="admin-action" style="display: none;">
+                    <div class="split-options-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                            <h2 style="font-size: 1.5rem; font-weight: 800;"><i data-lucide="users"></i> User Management</h2>
+                            <button class="auth-btn" id="refresh-users-btn"><i data-lucide="rotate-cw"></i> Refresh</button>
+                        </div>
+                        <div class="admin-table-container">
+                            <table class="admin-table">
+                               <thead>
+                                   <tr>
+                                       <th>Email</th>
+                                       <th>Level</th>
+                                       <th>Country</th>
+                                       <th>Actions</th>
+                                   </tr>
+                               </thead>
+                               <tbody id="admin-user-list">
+                                   <!-- Filled by JS -->
+                               </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Processing Overlay -->

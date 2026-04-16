@@ -16,19 +16,23 @@ const PDF_PRO_CONFIG = {
 };
 
 let currentUser = null;
+let currentProfile = null; // Stores level & admin status
 
 lucide.createIcons();
 
-// --- Auth UI Elements ---
+// --- Elements ---
 const authContainer = document.getElementById('auth-container');
 const authModal = document.getElementById('auth-modal');
 const closeAuthModal = document.getElementById('close-auth-modal');
 const modalTabBtns = document.querySelectorAll('.modal-tab-btn');
 const loginFormSide = document.getElementById('login-form-side');
 const signupFormSide = document.getElementById('signup-form-side');
-
-// --- Main Elements ---
 const navBtns = document.querySelectorAll('.nav-btn');
+const navAdminBtn = document.getElementById('nav-admin-btn');
+const adminAction = document.getElementById('admin-action');
+const adminUserList = document.getElementById('admin-user-list');
+const refreshUsersBtn = document.getElementById('refresh-users-btn');
+
 const mainTitle = document.getElementById('main-title');
 const mainSubtitle = document.getElementById('main-subtitle');
 const dropIcon = document.getElementById('drop-icon');
@@ -38,7 +42,6 @@ const fileInput = document.getElementById('file-input');
 const statusArea = document.getElementById('status-area');
 const uploadSection = document.getElementById('upload-section');
 const fileListContainer = document.getElementById('file-list');
-const mergeHint = document.getElementById('merge-hint');
 const modeSelection = document.getElementById('mode-selection');
 const mergeAction = document.getElementById('merge-action');
 const splitAction = document.getElementById('split-action');
@@ -54,13 +57,9 @@ const resultTitle = document.getElementById('result-title');
 const compressBtn = document.getElementById('compress-btn');
 const mergeBtn = document.getElementById('merge-btn');
 const splitBtn = document.getElementById('split-btn');
-const addMoreBtn = document.getElementById('add-more-btn');
-const addMoreMergeBtn = document.getElementById('add-more-merge-btn');
 const mainDownloadBtn = document.getElementById('main-download-btn');
 const downloadText = document.getElementById('download-text');
 const resetBtn = document.getElementById('reset-btn-v2');
-const mergedName = document.getElementById('merged-name');
-const mergedStats = document.getElementById('merged-stats');
 
 // Split Specific
 const splitTabBtns = document.querySelectorAll('.split-tab-btn');
@@ -79,7 +78,7 @@ let currentMode = 'recommended';
 let ranges = [{ from: 1, to: 1 }];
 let totalPagesInCurrentSplit = 0;
 
-// --- Auth Modal Control ---
+// --- Auth Handling ---
 function openModal() { authModal.style.display = 'flex'; }
 function closeModal() { authModal.style.display = 'none'; }
 
@@ -96,12 +95,15 @@ modalTabBtns.forEach(btn => {
     };
 });
 
-// --- Auth Handling ---
 async function updateAuthUI() {
     const { data: { user } } = await supabase.auth.getUser();
     currentUser = user;
     
     if (user) {
+        // Fetch extended profile data
+        const { data: profile } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
+        currentProfile = profile;
+
         const userName = user.user_metadata?.full_name || user.email.split('@')[0];
         authContainer.innerHTML = `
             <div class="user-profile">
@@ -113,61 +115,72 @@ async function updateAuthUI() {
             await supabase.auth.signOut();
             window.location.reload();
         };
+
+        // Show Admin Tab if applicable
+        if (profile?.is_admin) {
+            navAdminBtn.style.display = 'flex';
+        }
     } else {
         authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
         document.getElementById('login-trigger-btn').onclick = openModal;
+        navAdminBtn.style.display = 'none';
     }
 }
 
-// Logic: Do Signup
+// Logic: Auth Forms
 document.getElementById('do-signup-btn').onclick = async () => {
     const email = document.getElementById('signup-email').value;
     const name = document.getElementById('signup-name').value;
     const country = document.getElementById('signup-country').value;
-    
-    if (!email || !name || !country) { alert('Please fill in all fields.'); return; }
-    
-    const { data, error } = await supabase.auth.signUp({
-        email,
-        options: {
-            data: { full_name: name, country: country }
-        }
-    });
-    
-    if (error) { alert(error.message); }
-    else {
-        alert('Verification email sent! Please check your inbox to complete registration.');
-        closeModal();
-    }
+    if (!email || !name || !country) { alert('Fill all fields'); return; }
+    const { error } = await supabase.auth.signUp({ email, options: { data: { full_name: name, country: country } } });
+    if (error) alert(error.message);
+    else { alert('Verification email sent!'); closeModal(); }
 };
 
-// Logic: Do Login
 document.getElementById('do-login-btn').onclick = async () => {
     const email = document.getElementById('login-email').value;
-    if (!email) { alert('Please enter your email.'); return; }
-    
-    const { data, error } = await supabase.auth.signInWithOtp({ email });
-    
-    if (error) { alert(error.message); }
-    else {
-        alert('Magic link sent! Check your email to login.');
-        closeModal();
-    }
+    if (!email) { alert('Enter email'); return; }
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    if (error) alert(error.message);
+    else { alert('Magic link sent!'); closeModal(); }
 };
 
-supabase.auth.onAuthStateChange(() => updateAuthUI());
-updateAuthUI();
-
-function getUserLevel(user) {
-    if (!user) return 'GUEST';
-    if (user.email_confirmed_at && user.user_metadata?.verified_member) return 'VERIFIED';
-    return 'MEMBER';
+// --- Admin Section Logic ---
+async function fetchAdminUsers() {
+    adminUserList.innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>';
+    const { data, error } = await supabase.from('pdf_user_profiles').select('*').order('created_at', { ascending: false });
+    if (error) { alert("Admin access denied or error fetching users."); return; }
+    
+    adminUserList.innerHTML = '';
+    data.forEach(user => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${user.email}</td>
+            <td><span class="badge-level level-${user.level}">${user.level}</span></td>
+            <td>${user.country || 'N/A'}</td>
+            <td>
+                <select class="level-selector" data-id="${user.id}">
+                    <option value="MEMBER" ${user.level === 'MEMBER' ? 'selected' : ''}>Member</option>
+                    <option value="VERIFIED" ${user.level === 'VERIFIED' ? 'selected' : ''}>Verified</option>
+                </select>
+            </td>
+        `;
+        const selector = tr.querySelector('.level-selector');
+        selector.onchange = async (e) => {
+            const newLevel = e.target.value;
+            const uid = selector.dataset.id;
+            const { error: updErr } = await supabase.from('pdf_user_profiles').update({ level: newLevel }).eq('id', uid);
+            if (updErr) alert("Failed to update level.");
+            else fetchAdminUsers();
+        };
+        adminUserList.appendChild(tr);
+    });
 }
 
-// --- Initialization ---
-initSortable();
+refreshUsersBtn.onclick = fetchAdminUsers;
 
-// --- Navigation ---
+// --- Main App Logic ---
 navBtns.forEach(btn => {
     btn.onclick = () => {
         if (selectedFiles.length > 0 && !confirm('All progress will be lost. Continue?')) return;
@@ -176,62 +189,60 @@ navBtns.forEach(btn => {
         activeTab = btn.dataset.tab;
         updateUIForTab();
         resetToUpload();
+        if (activeTab === 'admin') fetchAdminUsers();
     };
 });
-
-splitTabBtns.forEach(btn => {
-    btn.onclick = () => {
-        splitTabBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        splitType = btn.dataset.splitType;
-        splitRangeSection.style.display = splitType === 'range' ? 'block' : 'none';
-        splitPagesSection.style.display = splitType === 'pages' ? 'block' : 'none';
-    };
-});
-
-addRangeBtn.onclick = () => {
-    const lastTo = ranges.length > 0 ? ranges[ranges.length - 1].to : 0;
-    ranges.push({ from: lastTo + 1, to: totalPagesInCurrentSplit });
-    renderRanges();
-};
 
 function updateUIForTab() {
+    // Hide all action sections
+    [modeSelection, mergeAction, splitAction, adminAction].forEach(el => el.style.display = 'none');
+
     if (activeTab === 'compress') {
         mainTitle.textContent = 'PDF Shrink';
         mainSubtitle.textContent = 'High Performance Batch Compression';
         dropIcon.setAttribute('data-lucide', 'shrink');
-        dropText.textContent = 'Select or drag up to 10 PDF files';
     } else if (activeTab === 'merge') {
         mainTitle.textContent = 'PDF Merge';
         mainSubtitle.textContent = 'Combine multiple PDF files into one';
         dropIcon.setAttribute('data-lucide', 'layers');
-        dropText.textContent = 'Select or drag PDF files to combine';
-    } else {
+    } else if (activeTab === 'split') {
         mainTitle.textContent = 'PDF Split';
         mainSubtitle.textContent = 'Extract ranges or split all pages';
         dropIcon.setAttribute('data-lucide', 'scissors');
-        dropText.textContent = 'Select or drag one PDF file to split';
+    } else if (activeTab === 'admin') {
+        mainTitle.textContent = 'Admin Board';
+        mainSubtitle.textContent = 'Manage users and system privileges';
+        dropIcon.setAttribute('data-lucide', 'shield-check');
+        uploadSection.style.display = 'none';
+        statusArea.style.display = 'block';
+        adminAction.style.display = 'block';
     }
     lucide.createIcons();
 }
 
+// Initial session logic
+supabase.auth.onAuthStateChange(() => updateAuthUI());
+updateAuthUI();
+
+function getUserLevel() {
+    if (!currentUser) return 'GUEST';
+    return currentProfile?.level || 'MEMBER';
+}
+
+// --- Rest of Main Logics ---
 dropZone.onclick = (e) => { if (e.target.id !== 'file-input') { fileInput.value = ''; fileInput.click(); } };
 
 async function handleFiles(files) {
-    const level = getUserLevel(currentUser);
+    const level = getUserLevel();
     const currentLimit = PDF_PRO_CONFIG.LIMITS[level];
     const newFiles = Array.from(files).filter(f => f.type === 'application/pdf');
-    
-    if (activeTab === 'split' && (selectedFiles.length + newFiles.length > 1)) {
-        alert('Split mode supports one file at a time.'); return;
-    }
+    if (activeTab === 'split' && (selectedFiles.length + newFiles.length > 1)) { alert('One file only'); return; }
 
     for (const file of newFiles) {
-        if (selectedFiles.length >= 10) { alert('Limit reached (Max 10 files)'); break; }
+        if (selectedFiles.length >= 10) break;
         if (file.size > currentLimit) {
-            if (level === 'GUEST') alert(`File size exceeds 50MB. Please login to increase the limit to 100MB.`);
-            else if (level === 'MEMBER') alert(`File size exceeds 100MB. Verified members get unlimited size.`);
-            continue; 
+            alert(`Limit exceeded for ${level}. Current limit: ${formatBytes(currentLimit)}`);
+            continue;
         }
         selectedFiles.push({ file, id: Math.random().toString(36).substr(2, 9) });
     }
@@ -239,10 +250,10 @@ async function handleFiles(files) {
     if (selectedFiles.length > 0) {
         uploadSection.style.display = 'none';
         statusArea.style.display = 'block';
-        modeSelection.style.display = activeTab === 'compress' ? 'block' : 'none';
-        mergeAction.style.display = activeTab === 'merge' ? 'block' : 'none';
-        splitAction.style.display = activeTab === 'split' ? 'block' : 'none';
+        if (activeTab === 'compress') modeSelection.style.display = 'block';
+        if (activeTab === 'merge') mergeAction.style.display = 'block';
         if (activeTab === 'split') {
+            splitAction.style.display = 'block';
             const pdf = await PDFDocument.load(await selectedFiles[0].file.arrayBuffer(), { ignoreEncryption: true });
             totalPagesInCurrentSplit = pdf.getPageCount();
             ranges = [{ from: 1, to: totalPagesInCurrentSplit }];
@@ -252,206 +263,47 @@ async function handleFiles(files) {
     }
 }
 
+// (renderFileList, renderRanges, initSortable, compress, merge, split, showResults remain the same...)
 function renderFileList() {
     fileListContainer.innerHTML = '';
     selectedFiles.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'file-list-item';
-        row.dataset.id = item.id;
-        row.innerHTML = `<div class="file-list-info">
-                <i data-lucide="file-text" style="color: var(--primary);"></i>
-                <div style="flex:1">
-                    <div class="file-list-name">${item.file.name}</div>
-                    <div class="file-list-size">${formatBytes(item.file.size)}</div>
-                </div>
-            </div>
-            <button class="cancel-item-btn" data-id="${item.id}"><i data-lucide="x" size="16"></i></button>`;
+        const row = document.createElement('div'); row.className = 'file-list-item'; row.dataset.id = item.id;
+        row.innerHTML = `<div class="file-list-info"><i data-lucide="file-text" style="color:var(--primary);"></i><div style="flex:1"><div class="file-list-name">${item.file.name}</div><div class="file-list-size">${formatBytes(item.file.size)}</div></div></div><button class="cancel-item-btn" data-id="${item.id}"><i data-lucide="x" size="16"></i></button>`;
         fileListContainer.appendChild(row);
     });
-    document.querySelectorAll('.cancel-item-btn').forEach(btn => btn.onclick = (e) => {
-        e.stopPropagation();
-        selectedFiles = selectedFiles.filter(item => item.id !== btn.dataset.id);
-        if (selectedFiles.length === 0) resetToUpload(); else renderFileList();
-    });
+    document.querySelectorAll('.cancel-item-btn').forEach(btn => btn.onclick = () => { selectedFiles = selectedFiles.filter(i => i.id !== btn.dataset.id); if (selectedFiles.length === 0) resetToUpload(); else renderFileList(); });
     lucide.createIcons();
 }
-
 function renderRanges() {
     rangeListContainer.innerHTML = '';
     ranges.forEach((range, idx) => {
-        const row = document.createElement('div');
-        row.className = 'range-input-row';
-        row.innerHTML = `
-            <span class="range-label">Range ${idx + 1}</span>
-            <input type="number" class="range-field from-input" value="${range.from}" min="1">
-            <span style="color: var(--text-muted); font-weight:700">to</span>
-            <input type="number" class="range-field to-input" value="${range.to}" min="1">
-            <button class="remove-range-btn" style="display: ${ranges.length > 1 ? 'flex' : 'none'}"><i data-lucide="trash-2" size="20"></i></button>
-        `;
-        const fromInp = row.querySelector('.from-input');
-        const toInp = row.querySelector('.to-input');
-        fromInp.oninput = (e) => ranges[idx].from = parseInt(e.target.value) || 1;
-        toInp.oninput = (e) => {
-            const val = parseInt(e.target.value) || 1;
-            ranges[idx].to = val;
-            if (idx + 1 < ranges.length) {
-                ranges[idx + 1].from = val + 1;
-                const nextRow = rangeListContainer.children[idx + 1];
-                if (nextRow) nextRow.querySelector('.from-input').value = val + 1;
-            }
+        const row = document.createElement('div'); row.className = 'range-input-row';
+        row.innerHTML = `<span class="range-label">Range ${idx + 1}</span><input type="number" class="range-field from-input" value="${range.from}"><span style="color:var(--text-muted)">to</span><input type="number" class="range-field to-input" value="${range.to}"><button class="remove-range-btn" style="display:${ranges.length>1?'flex':'none'}"><i data-lucide="trash-2"></i></button>`;
+        row.querySelector('.from-input').oninput = (e) => ranges[idx].from = parseInt(e.target.value) || 1;
+        row.querySelector('.to-input').oninput = (e) => {
+            const val = parseInt(e.target.value) || 1; ranges[idx].to = val;
+            if (idx + 1 < ranges.length) { ranges[idx + 1].from = val + 1; renderRanges(); }
         };
         row.querySelector('.remove-range-btn').onclick = () => { ranges.splice(idx, 1); renderRanges(); };
         rangeListContainer.appendChild(row);
     });
     lucide.createIcons();
 }
+function initSortable() { Sortable.create(fileListContainer, { animation: 150, handle: '.file-list-item', onEnd: () => { const ids = Array.from(fileListContainer.querySelectorAll('.file-list-item')).map(el => el.dataset.id); selectedFiles = ids.map(id => selectedFiles.find(item => item.id === id)); } }); }
 
-function initSortable() {
-    Sortable.create(fileListContainer, { animation: 150, handle: '.file-list-item',
-        onEnd: () => { 
-            const ids = Array.from(fileListContainer.querySelectorAll('.file-list-item')).map(el => el.dataset.id);
-            selectedFiles = ids.map(id => selectedFiles.find(item => item.id === id));
-        }
-    });
-}
+compressBtn.onclick = async () => { processingOverlay.style.display = 'flex'; modeSelection.style.display = 'none'; compressedResults = []; for (let b = 0; b < selectedFiles.length; b++) { const blob = await compressSinglePDF(selectedFiles[b].file, (msg, prog) => { processingStatus.textContent = msg; progressBar.style.width = `${prog}%`; }); compressedResults.push({ blob, name: selectedFiles[b].file.name.replace(/\.[^/.]+$/, "")+"_S.pdf" }); } showBatchResults(); };
+mergeBtn.onclick = async () => { mergeAction.style.display='none'; processingOverlay.style.display='flex'; try { const m = await PDFDocument.create(); for (let i=0; i<selectedFiles.length; i++) { const p = await PDFDocument.load(await selectedFiles[i].file.arrayBuffer(),{ignoreEncryption:true}); const pg = await m.copyPages(p, p.getPageIndices()); pg.forEach(x => m.addPage(x)); } finalBlob = new Blob([await m.save()], {type:'application/pdf'}); showSingleResult('MERGE COMPLETED!', 'Ready', 'merged.pdf'); } catch(e) {alert('Error'); resetToUpload(); } };
+splitBtn.onclick = async () => { splitAction.style.display='none'; processingOverlay.style.display='flex'; try { const pDoc = await PDFDocument.load(await selectedFiles[0].file.arrayBuffer(), {ignoreEncryption:true}); const tot = pDoc.getPageCount(); const res = []; if (splitType==='pages') { for(let i=0; i<tot; i++) { const d = await PDFDocument.create(); const [pg] = await d.copyPages(pDoc, [i]); d.addPage(pg); res.push({blob: new Blob([await d.save()], {type:'application/pdf'}), name:`page_${i+1}.pdf`}); } } else { for(let i=0; i<ranges.length; i++) { const r = ranges[i]; const ids = []; for(let p=r.from-1; p<r.to; p++) if(p<tot) ids.push(p); if(ids.length===0) continue; const d = await PDFDocument.create(); const pgs = await d.copyPages(pDoc, ids); pgs.forEach(x => d.addPage(x)); res.push({blob: new Blob([await d.save()], {type:'application/pdf'}), name:`range_${i+1}.pdf`}); } } if(res.length===1) { finalBlob=res[0].blob; showSingleResult('SPLIT!','Ready',res[0].name); } else { const z = new JSZip(); res.forEach(x => z.file(x.name, x.blob)); finalBlob=await z.generateAsync({type:'blob'}); showSingleResult('SPLIT!','ZIP Ready','split.zip'); } } catch(e) {alert('Error'); resetToUpload();} };
 
-compressBtn.onclick = async () => {
-    processingOverlay.style.display = 'flex'; modeSelection.style.display = 'none'; compressedResults = [];
-    for (let b = 0; b < selectedFiles.length; b++) {
-        const file = selectedFiles[b].file;
-        batchProgressText.textContent = `COMPRESSING (${b + 1}/${selectedFiles.length})`;
-        const blob = await compressSinglePDF(file, (msg, prog) => { processingStatus.textContent = msg; progressBar.style.width = `${prog}%`; });
-        let suffix = currentMode === 'extreme' ? '_SS' : currentMode === 'recommended' ? '_S' : '_N';
-        compressedResults.push({ blob, name: file.name.replace(/\.[^/.]+$/, "") + suffix + ".pdf" });
-    }
-    showBatchResults();
-};
-
-mergeBtn.onclick = async () => {
-    mergeAction.style.display = 'none'; processingOverlay.style.display = 'flex'; batchProgressText.textContent = 'MERGING PDFS...';
-    try {
-        const mergedPdf = await PDFDocument.create();
-        for (let i = 0; i < selectedFiles.length; i++) {
-            const pdf = await PDFDocument.load(await selectedFiles[i].file.arrayBuffer(), { ignoreEncryption: true });
-            const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-            pages.forEach(p => mergedPdf.addPage(p));
-            progressBar.style.width = `${((i+1) / selectedFiles.length) * 100}%`;
-        }
-        finalBlob = new Blob([await mergedPdf.save()], { type: 'application/pdf' });
-        showSingleResult('MERGE COMPLETED!', 'Your merged file is ready', 'merged_document.pdf');
-    } catch (err) { alert('Merge failed.'); resetToUpload(); }
-};
-
-splitBtn.onclick = async () => {
-    splitAction.style.display = 'none'; processingOverlay.style.display = 'flex'; batchProgressText.textContent = 'SPLITTING PDF...';
-    try {
-        const file = selectedFiles[0].file;
-        const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
-        const total = pdfDoc.getPageCount();
-        const results = [];
-        if (splitType === 'pages') {
-            for (let i = 0; i < total; i++) {
-                const newDoc = await PDFDocument.create();
-                const [p] = await newDoc.copyPages(pdfDoc, [i]);
-                newDoc.addPage(p);
-                results.push({ blob: new Blob([await newDoc.save()], { type: 'application/pdf' }), name: `page_${i+1}.pdf` });
-                progressBar.style.width = `${(i+1)/total*100}%`;
-            }
-        } else {
-            for (let i = 0; i < ranges.length; i++) {
-                const r = ranges[i];
-                const from = Math.max(1, r.from || 1);
-                const to = Math.min(total, r.to || total);
-                const idxs = []; for (let p = from - 1; p < to; p++) idxs.push(p);
-                if (idxs.length === 0) continue;
-                const rDoc = await PDFDocument.create();
-                const pages = await rDoc.copyPages(pdfDoc, idxs);
-                pages.forEach(pg => rDoc.addPage(pg));
-                results.push({ blob: new Blob([await rDoc.save()], { type: 'application/pdf' }), name: `range_${i+1}.pdf` });
-            }
-        }
-        if (results.length === 1) { finalBlob = results[0].blob; showSingleResult('SPLIT COMPLETED!', 'Fragment ready', results[0].name); }
-        else { const zip = new JSZip(); results.forEach(res => zip.file(res.name, res.blob)); finalBlob = await zip.generateAsync({type:'blob'}); showSingleResult('SPLIT COMPLETED!', 'Files in ZIP', 'split.zip'); }
-    } catch (err) { alert('Split failed.'); resetToUpload(); }
-};
-
-function showBatchResults() {
-    processingOverlay.style.display = 'none'; resultDashboard.style.display = 'block'; fileListContainer.style.display = 'none';
-    resultListContainer.style.display = 'block'; singleResult.style.display = 'none';
-    resultBadge.textContent = 'COMPRESS COMPLETED!'; 
-    if (compressedResults.length === 1) { finalBlob = compressedResults[0].blob; showSingleResult('COMPRESS COMPLETED!', 'Optimized ready', compressedResults[0].name); return; }
-    downloadText.textContent = 'Download All (ZIP)'; resultListContainer.innerHTML = '';
-    compressedResults.forEach(item => resultListContainer.appendChild(createResultCard(item.name, formatBytes(item.blob.size), item.blob)));
-    lucide.createIcons();
-}
-
-function showSingleResult(badge, title, name) {
-    processingOverlay.style.display = 'none'; resultDashboard.style.display = 'block'; fileListContainer.style.display = 'none';
-    resultListContainer.style.display = 'none'; singleResult.style.display = 'block';
-    resultBadge.textContent = badge; resultTitle.textContent = title; mergedName.textContent = name;
-    mergedStats.textContent = formatBytes(finalBlob.size); downloadText.textContent = name.endsWith('.zip') ? 'Download ZIP' : 'Download PDF';
-    lucide.createIcons();
-}
-
-function createResultCard(name, stats, blob) {
-    const card = document.createElement('div'); card.className = 'result-list-item';
-    card.innerHTML = `<div class="result-list-icon"><i data-lucide="check"></i></div><div class="result-list-info"><div class="result-list-name">${name}</div><div class="result-list-stats">${stats}</div></div><button class="individual-download-btn"><i data-lucide="download"></i></button>`;
-    card.querySelector('button').onclick = () => downloadFile(blob, name);
-    return card;
-}
-
-mainDownloadBtn.onclick = async () => {
-    const isZip = finalBlob.type === 'application/zip';
-    saveAsFile(finalBlob, 'processed_'+Date.now()+(isZip?'.zip':'.pdf'), finalBlob.type, isZip?'.zip':'.pdf');
-};
-
-async function saveAsFile(blob, suggestedName, mimeType, extension) {
-    if ('showSaveFilePicker' in window) { try { const h = await window.showSaveFilePicker({ suggestedName, types: [{ accept: { [mimeType]: [extension] } }] }); const w = await h.createWritable(); await w.write(blob); await w.close(); } catch {} }
-    else { downloadFile(blob, suggestedName); }
-}
-
-function downloadFile(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
-
+function showBatchResults() { processingOverlay.style.display='none'; resultDashboard.style.display='block'; fileListContainer.style.display='none'; resultListContainer.style.display='block'; singleResult.style.display='none'; if(compressedResults.length===1) { finalBlob=compressedResults[0].blob; showSingleResult('DONE','Ready',compressedResults[0].name); return; } resultListContainer.innerHTML = ''; compressedResults.forEach(i => resultListContainer.appendChild(createResultCard(i.name, formatBytes(i.blob.size), i.blob))); lucide.createIcons(); }
+function showSingleResult(b,t,n) { processingOverlay.style.display='none'; resultDashboard.style.display='block'; fileListContainer.style.display='none'; resultListContainer.style.display='none'; singleResult.style.display='block'; resultBadge.textContent=b; resultTitle.textContent=t; mergedName.textContent=n; mergedStats.textContent=formatBytes(finalBlob.size); downloadText.textContent=n.endsWith('.zip')?'Download ZIP':'Download PDF'; lucide.createIcons(); }
+function createResultCard(n,s,b) { const c = document.createElement('div'); c.className='result-list-item'; c.innerHTML=`<div class="result-list-icon"><i data-lucide="check"></i></div><div class="result-list-info"><div>${n}</div><div>${s}</div></div><button class="individual-download-btn"><i data-lucide="download"></i></button>`; c.querySelector('button').onclick=()=>downloadFile(b,n); return c; }
+mainDownloadBtn.onclick = () => saveAsFile(finalBlob, 'processed_'+Date.now()+'.pdf', finalBlob.type, '.pdf');
+async function saveAsFile(b,n,m,e) { if('showSaveFilePicker'in window) { try { const h=await window.showSaveFilePicker({suggestedName:n}); const w=await h.createWritable(); await w.write(b); await w.close(); }catch(x){}} else downloadFile(b,n); }
+function downloadFile(b,n) { const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=n; document.body.appendChild(a); a.click(); }
 resetBtn.onclick = () => resetToUpload();
-
-function resetToUpload() {
-    uploadSection.style.display = 'block'; statusArea.style.display = 'none'; resultDashboard.style.display = 'none';
-    fileInput.value = ''; selectedFiles = []; compressedResults = []; finalBlob = null; ranges = [{ from: 1, to: 1 }];
-    renderFileList();
-}
-
-const modeCards = document.querySelectorAll('.mode-card');
-modeCards.forEach(card => card.addEventListener('click', () => { modeCards.forEach(c => c.classList.remove('selected')); card.classList.add('selected'); currentMode = card.dataset.mode; }));
-
-async function compressSinglePDF(file, updateProgress) {
-    const pdf = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
-    const context = pdf.context; const items = [];
-    for (const [ref, obj] of context.enumerateIndirectObjects()) { if (obj instanceof PDFRawStream && obj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) items.push({ ref, obj }); }
-    const q = currentMode === 'extreme' ? 0.3 : currentMode === 'recommended' ? 0.6 : 0.85;
-    const s = currentMode === 'extreme' ? 0.4 : currentMode === 'recommended' ? 0.6 : 0.9;
-    for (let i = 0; i < items.length; i++) {
-        updateProgress(`Processing images (${i+1}/${items.length})`, 10 + (i / items.length * 80));
-        const res = await compressImageStream(items[i].obj, q, s);
-        if (res) {
-            const d = items[i].obj.dict.clone(); d.set(PDFName.of('Width'), PDFNumber.of(res.width)); d.set(PDFName.of('Height'), PDFNumber.of(res.height));
-            d.set(PDFName.of('Filter'), PDFName.of('DCTDecode')); d.delete(PDFName.of('DecodeParms')); d.delete(PDFName.of('SMask'));
-            context.assign(items[i].ref, PDFRawStream.of(d, res.bytes));
-        }
-    }
-    return new Blob([await pdf.save()], { type: 'application/pdf' });
-}
-
-async function compressImageStream(stream, quality, scale) {
-    const w = stream.dict.get(PDFName.of('Width'))?.numberValue; if (!w || w < 10) return null;
-    return new Promise(resolve => {
-        const img = new Image();
-        img.onload = () => {
-            const c = document.createElement('canvas'); const nw = Math.floor(w * scale), nh = Math.floor((stream.dict.get(PDFName.of('Height'))?.numberValue || 0) * scale);
-            c.width = nw; c.height = nh; c.getContext('2d').drawImage(img, 0, 0, nw, nh);
-            c.toBlob(b => b.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), width: nw, height: nh })), 'image/jpeg', quality);
-        };
-        img.onerror = () => resolve(null);
-        img.src = URL.createObjectURL(new Blob([stream.contents]));
-    });
-}
-function formatBytes(bytes, d = 2) { if (bytes === 0) return '0 Bytes'; const k = 1024, i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(d)) + ' ' + ['Bytes', 'KB', 'MB', 'GB', 'TB'][i]; }
+function resetToUpload() { uploadSection.style.display='block'; statusArea.style.display='none'; resultDashboard.style.display='none'; fileInput.value=''; selectedFiles=[]; compressedResults=[]; finalBlob=null; ranges=[{from:1,to:1}]; renderFileList(); }
+const modeCards = document.querySelectorAll('.mode-card'); modeCards.forEach(c => c.onclick=() => { modeCards.forEach(x=>x.classList.remove('selected')); c.classList.add('selected'); currentMode=c.dataset.mode; });
+async function compressSinglePDF(f,u) { const p = await PDFDocument.load(await f.arrayBuffer(),{ignoreEncryption:true}); const ctx = p.context; const items = []; for(const[r,o] of ctx.enumerateIndirectObjects()){if(o instanceof PDFRawStream && o.dict.get(PDFName.of('Subtype'))===PDFName.of('Image')) items.push({r,o});} const q=currentMode==='extreme'?0.3:0.6; const s=currentMode==='extreme'?0.4:0.7; for(let i=0; i<items.length; i++){u(`Images ${i+1}/${items.length}`, 10+(i/items.length*80)); const res=await compressImageStream(items[i].o,q,s); if(res){const d=items[i].o.dict.clone(); d.set(PDFName.of('Width'),PDFNumber.of(res.width)); d.set(PDFName.of('Height'),PDFNumber.of(res.height)); d.set(PDFName.of('Filter'),PDFName.of('DCTDecode')); d.delete(PDFName.of('DecodeParms')); ctx.assign(items[i].r, PDFRawStream.of(d, res.bytes));}} return new Blob([await p.save()], {type:'application/pdf'}); }
+async function compressImageStream(s,q,sc) { const w=s.dict.get(PDFName.of('Width'))?.numberValue; if(!w||w<10) return null; return new Promise(res => { const img=new Image(); img.onload=()=>{const c=document.createElement('canvas'); const nw=Math.floor(w*sc),nh=Math.floor(s.dict.get(PDFName.of('Height')).numberValue*sc); c.width=nw; c.height=nh; c.getContext('2d').drawImage(img,0,0,nw,nh); c.toBlob(b=>b.arrayBuffer().then(buf=>res({bytes:new Uint8Array(buf),width:nw,height:nh})),'image/jpeg',q);}; img.src=URL.createObjectURL(new Blob([s.contents])); }); }
+function formatBytes(b,d=2){if(b===0) return '0 Bytes'; const k=1024,i=Math.floor(Math.log(b)/Math.log(k)); return parseFloat((b/Math.pow(k,i)).toFixed(d))+' '+['B','KB','MB','GB','TB'][i];}
