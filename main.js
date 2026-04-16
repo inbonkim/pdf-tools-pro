@@ -106,11 +106,15 @@ modalTabBtns.forEach(btn => {
     };
 });
 
+let isUpdatingAuth = false;
+
 // --- Auth Handling ---
 async function updateAuthUI() {
+    if (isUpdatingAuth) return;
+    isUpdatingAuth = true;
+    
     try {
         logDebug("Syncing Session...");
-        // getSession is faster as it checks local storage
         const { data: { session }, error: sErr } = await supabase.auth.getSession();
         if (sErr) throw sErr;
         
@@ -118,7 +122,7 @@ async function updateAuthUI() {
         
         if (currentUser) {
             logDebug(`Session OK: ${currentUser.email}`);
-            // Lazy load profile to avoid blocking
+            // Lazy load profile
             supabase.from('pdf_user_profiles').select('*').eq('id', currentUser.id).single()
                 .then(({ data: profile }) => {
                     if (profile) {
@@ -139,6 +143,8 @@ async function updateAuthUI() {
         }
     } catch (err) {
         logDebug(`Sync Error: ${err.message}`, "#f87171");
+    } finally {
+        isUpdatingAuth = false;
     }
 }
 
