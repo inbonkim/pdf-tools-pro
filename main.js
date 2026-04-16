@@ -9,9 +9,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // --- 환경 설정 ---
 const PDF_PRO_CONFIG = {
     LIMITS: {
-        GUEST: 50 * 1024 * 1024,
-        MEMBER: 100 * 1024 * 1024,
-        VERIFIED: Infinity
+        GUEST: 500 * 1024 * 1024,     // 500MB
+        MEMBER: 1000 * 1024 * 1024,   // 1GB (로그인 유도용 상향)
+        VERIFIED: Infinity            // Unlimited
     }
 };
 
