@@ -166,19 +166,23 @@
                 <!-- Login Form -->
                 <div id="login-form-side">
                     <h2 class="modal-title">Welcome Back</h2>
-                    <p class="modal-subtitle">Enter your email for magic link login</p>
+                    <p class="modal-subtitle">Login with your email and password</p>
                     <div class="input-group">
                         <label>Email Address</label>
                         <input type="email" id="login-email" placeholder="name@company.com">
                     </div>
-                    <button class="action-btn" id="do-login-btn">Send Magic Link</button>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="••••••••">
+                    </div>
+                    <button class="action-btn" id="do-login-btn">Log In</button>
                 </div>
 
                 <!-- Signup Form -->
                 <div id="signup-form-side" style="display: none;">
                     <div class="notice-box">
                         <i data-lucide="mail"></i>
-                        <span>A verification email will be sent. Please check your inbox to activate your account.</span>
+                        <span>Enter your details and set a secure password. Profile verification may be required.</span>
                     </div>
                     <h2 class="modal-title">Create Account</h2>
                     <div class="input-group">
@@ -193,7 +197,11 @@
                         <label>Country</label>
                         <input type="text" id="signup-country" placeholder="South Korea">
                     </div>
-                    <button class="action-btn" id="do-signup-btn">Create & Verify</button>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="signup-password" placeholder="Minimum 6 characters">
+                    </div>
+                    <button class="action-btn" id="do-signup-btn">Register Now</button>
                 </div>
             </div>
         </div>
