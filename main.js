@@ -19,8 +19,15 @@ let currentUser = null;
 
 lucide.createIcons();
 
-// --- Elements ---
+// --- Auth UI Elements ---
 const authContainer = document.getElementById('auth-container');
+const authModal = document.getElementById('auth-modal');
+const closeAuthModal = document.getElementById('close-auth-modal');
+const modalTabBtns = document.querySelectorAll('.modal-tab-btn');
+const loginFormSide = document.getElementById('login-form-side');
+const signupFormSide = document.getElementById('signup-form-side');
+
+// --- Main Elements ---
 const navBtns = document.querySelectorAll('.nav-btn');
 const mainTitle = document.getElementById('main-title');
 const mainSubtitle = document.getElementById('main-subtitle');
@@ -72,15 +79,33 @@ let currentMode = 'recommended';
 let ranges = [{ from: 1, to: 1 }];
 let totalPagesInCurrentSplit = 0;
 
+// --- Auth Modal Control ---
+function openModal() { authModal.style.display = 'flex'; }
+function closeModal() { authModal.style.display = 'none'; }
+
+closeAuthModal.onclick = closeModal;
+authModal.onclick = (e) => { if (e.target === authModal) closeModal(); };
+
+modalTabBtns.forEach(btn => {
+    btn.onclick = () => {
+        modalTabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const mode = btn.dataset.mode;
+        loginFormSide.style.display = mode === 'login' ? 'block' : 'none';
+        signupFormSide.style.display = mode === 'signup' ? 'block' : 'none';
+    };
+});
+
 // --- Auth Handling ---
 async function updateAuthUI() {
     const { data: { user } } = await supabase.auth.getUser();
     currentUser = user;
     
     if (user) {
+        const userName = user.user_metadata?.full_name || user.email.split('@')[0];
         authContainer.innerHTML = `
             <div class="user-profile">
-                <span class="user-email">${user.email}</span>
+                <span class="user-email">${userName}</span>
                 <span class="logout-link" id="logout-btn">Logout</span>
             </div>
         `;
@@ -89,27 +114,52 @@ async function updateAuthUI() {
             window.location.reload();
         };
     } else {
-        authContainer.innerHTML = `<button id="login-btn" class="auth-btn">Login</button>`;
-        document.getElementById('login-btn').onclick = () => {
-            // 간단하게 이메일 로그인을 유도할 수 있는 모달이나 시나리오를 넣을 수 있습니다.
-            const email = prompt("Enter your email for login:");
-            if (email) {
-                supabase.auth.signInWithOtp({ email }).then(({ error }) => {
-                    if (error) alert(error.message);
-                    else alert("Check your email for the magic link!");
-                });
-            }
-        };
+        authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
+        document.getElementById('login-trigger-btn').onclick = openModal;
     }
 }
 
-// Listen for auth changes
+// Logic: Do Signup
+document.getElementById('do-signup-btn').onclick = async () => {
+    const email = document.getElementById('signup-email').value;
+    const name = document.getElementById('signup-name').value;
+    const country = document.getElementById('signup-country').value;
+    
+    if (!email || !name || !country) { alert('Please fill in all fields.'); return; }
+    
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        options: {
+            data: { full_name: name, country: country }
+        }
+    });
+    
+    if (error) { alert(error.message); }
+    else {
+        alert('Verification email sent! Please check your inbox to complete registration.');
+        closeModal();
+    }
+};
+
+// Logic: Do Login
+document.getElementById('do-login-btn').onclick = async () => {
+    const email = document.getElementById('login-email').value;
+    if (!email) { alert('Please enter your email.'); return; }
+    
+    const { data, error } = await supabase.auth.signInWithOtp({ email });
+    
+    if (error) { alert(error.message); }
+    else {
+        alert('Magic link sent! Check your email to login.');
+        closeModal();
+    }
+};
+
 supabase.auth.onAuthStateChange(() => updateAuthUI());
 updateAuthUI();
 
 function getUserLevel(user) {
     if (!user) return 'GUEST';
-    // 이메일 인증이 완료되었거나 메타데이터에 인증회원 표시가 있는 경우
     if (user.email_confirmed_at && user.user_metadata?.verified_member) return 'VERIFIED';
     return 'MEMBER';
 }
@@ -117,10 +167,7 @@ function getUserLevel(user) {
 // --- Initialization ---
 initSortable();
 
-// --- Event Listeners ---
-// ... (기본 네비게이션 및 Split 관련 리스너 유지)
-// [생략된 부분은 기존 main.js와 동일하게 유지하되, handleFiles에 인증 로직 추가]
-
+// --- Navigation ---
 navBtns.forEach(btn => {
     btn.onclick = () => {
         if (selectedFiles.length > 0 && !confirm('All progress will be lost. Continue?')) return;
@@ -173,7 +220,6 @@ dropZone.onclick = (e) => { if (e.target.id !== 'file-input') { fileInput.value 
 async function handleFiles(files) {
     const level = getUserLevel(currentUser);
     const currentLimit = PDF_PRO_CONFIG.LIMITS[level];
-    
     const newFiles = Array.from(files).filter(f => f.type === 'application/pdf');
     
     if (activeTab === 'split' && (selectedFiles.length + newFiles.length > 1)) {
@@ -182,18 +228,11 @@ async function handleFiles(files) {
 
     for (const file of newFiles) {
         if (selectedFiles.length >= 10) { alert('Limit reached (Max 10 files)'); break; }
-        
-        // --- 사이즈 제한 로직 적용 ---
         if (file.size > currentLimit) {
-            let limitMB = currentLimit / (1024 * 1024);
-            if (level === 'GUEST') {
-                alert(`File size exceeds 50MB. Please login to increase the limit to 100MB.`);
-            } else if (level === 'MEMBER') {
-                alert(`File size exceeds 100MB. Verified members get unlimited size.`);
-            }
+            if (level === 'GUEST') alert(`File size exceeds 50MB. Please login to increase the limit to 100MB.`);
+            else if (level === 'MEMBER') alert(`File size exceeds 100MB. Verified members get unlimited size.`);
             continue; 
         }
-
         selectedFiles.push({ file, id: Math.random().toString(36).substr(2, 9) });
     }
 
@@ -203,7 +242,6 @@ async function handleFiles(files) {
         modeSelection.style.display = activeTab === 'compress' ? 'block' : 'none';
         mergeAction.style.display = activeTab === 'merge' ? 'block' : 'none';
         splitAction.style.display = activeTab === 'split' ? 'block' : 'none';
-        
         if (activeTab === 'split') {
             const pdf = await PDFDocument.load(await selectedFiles[0].file.arrayBuffer(), { ignoreEncryption: true });
             totalPagesInCurrentSplit = pdf.getPageCount();
@@ -213,9 +251,6 @@ async function handleFiles(files) {
         renderFileList();
     }
 }
-
-// ... (기존 renderFileList, renderRanges, initSortable, compress, merge, split 로직 유지)
-// [나머지 코드 생략 - 이전 main.js와 로직 동일함]
 
 function renderFileList() {
     fileListContainer.innerHTML = '';

@@ -171,4 +171,95 @@ header h1 { font-size: 2.2rem; font-weight: 900; margin-bottom: 0.5rem; color: #
 .action-btn { width: 100%; padding: 1.4rem; border-radius: 16px; background: var(--primary) !important; color: white !important; font-weight: 800; font-size: 1.2rem; border: none !important; cursor: pointer; box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3); }
 .btn-secondary { background: rgba(255, 255, 255, 0.08) !important; margin-top: 1rem; color: #fff !important; }
 
-footer { margin-top: 5rem; padding: 2.5rem; border-top: 1px solid var(--glass-border); opacity: 0.5; text-align: center; font-size: 0.85rem; }
+/* Auth Modal Styling */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal-card {
+  background: var(--card-bg);
+  width: 100%;
+  max-width: 450px;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  padding: 2.5rem;
+  position: relative;
+  box-shadow: 0 50px 100px -20px rgba(0, 0, 0, 0.8);
+}
+
+.modal-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-tabs {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 2rem;
+}
+
+.modal-tab-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.modal-tab-btn.active {
+  background: var(--primary);
+  color: white;
+}
+
+.modal-title { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.5rem; }
+.modal-subtitle { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 2rem; }
+
+.input-group { margin-bottom: 1.5rem; }
+.input-group label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--primary); margin-bottom: 8px; }
+.input-group input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 12px 1rem;
+  color: white;
+  font-size: 1rem;
+}
+
+.notice-box {
+  background: rgba(99, 102, 241, 0.1);
+  border-left: 4px solid var(--primary);
+  padding: 1rem;
+  border-radius: 8px;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+  color: #a5b4fc;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
