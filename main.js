@@ -110,33 +110,35 @@ modalTabBtns.forEach(btn => {
 async function updateAuthUI() {
     try {
         logDebug("Syncing Session...");
-        const { data: { user }, error: uErr } = await supabase.auth.getUser();
-        if (uErr) throw uErr;
-        currentUser = user;
+        // getSession is faster as it checks local storage
+        const { data: { session }, error: sErr } = await supabase.auth.getSession();
+        if (sErr) throw sErr;
         
-        if (user) {
-            logDebug(`Session OK: ${user.email}`);
-            try {
-                const { data: profile, error: pErr } = await supabase.from('pdf_user_profiles').select('*').eq('id', user.id).single();
-                if (!pErr) {
-                    currentProfile = profile;
-                    logDebug(`Profile: ${profile?.level} (Admin: ${profile?.is_admin})`);
-                }
-            } catch (pErr) {}
+        currentUser = session?.user || null;
+        
+        if (currentUser) {
+            logDebug(`Session OK: ${currentUser.email}`);
+            // Lazy load profile to avoid blocking
+            supabase.from('pdf_user_profiles').select('*').eq('id', currentUser.id).single()
+                .then(({ data: profile }) => {
+                    if (profile) {
+                        currentProfile = profile;
+                        logDebug(`Profile: ${profile.level}`);
+                        if (profile.is_admin) navAdminBtn.style.display = 'flex';
+                    }
+                }).catch(() => {});
 
-            const userName = user.user_metadata?.full_name || user.email.split('@')[0];
+            const userName = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
             authContainer.innerHTML = `<div class="user-profile"><span class="user-email">${userName}</span><span class="logout-link" id="logout-btn">Logout</span></div>`;
             const logOutBtn = document.getElementById('logout-btn');
             if (logOutBtn) logOutBtn.onclick = async () => { await supabase.auth.signOut(); window.location.reload(); };
-            
-            if (currentProfile?.is_admin) navAdminBtn.style.display = 'flex';
         } else {
             logDebug("Guest Session.");
             authContainer.innerHTML = `<button id="login-trigger-btn" class="auth-btn">Login / Sign Up</button>`;
             navAdminBtn.style.display = 'none';
         }
     } catch (err) {
-        logDebug(`Auth Error: ${err.message}`, "#f87171");
+        logDebug(`Sync Error: ${err.message}`, "#f87171");
     }
 }
 
